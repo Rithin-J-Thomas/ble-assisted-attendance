@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screen/role.dart';
+import 'screen/teacher.dart';
 
 void main() {
   runApp(const MyApp());
