@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
+import 'teacher.dart';
+import 'dart:convert';
 
 
 class Teacher extends StatefulWidget {
@@ -39,14 +41,40 @@ class _TeacherState extends State<Teacher> {
     }
 
     _scanSub?.cancel();
-    _scanSub = _ble.scanForDevices(withServices: [], scanMode: ScanMode.lowLatency)
+
+    final myServiceUuid =
+    Uuid.parse("12345678-1234-1234-1234-1234567890ab");
+
+    _scanSub = _ble
+        .scanForDevices(
+      withServices: [myServiceUuid], // 👈 FILTER HERE
+      scanMode: ScanMode.lowLatency,
+    )
         .listen((device) {
-      debugPrint('Found: ${device.name.isNotEmpty ? device.name : "Unknown"} '
-          '(${device.manufacturerData}) RSSI: ${device.rssi}');
+
+      final data = device.manufacturerData;
+
+      if (data.length <= 2) return; // must contain ID + data
+
+      try {
+        // Remove manufacturer ID (first 2 bytes)
+        final rollBytes = data.sublist(2);
+
+        final rollNo = utf8.decode(rollBytes);
+
+        debugPrint("Student Present: $rollNo | RSSI: ${device.rssi}");
+
+      } catch (e) {
+        debugPrint("Decode failed: $e");
+      }
+
     }, onError: (e) {
       debugPrint('Scan error: $e');
     });
+
+
   }
+
 
   @override
   Widget build(BuildContext context) {
