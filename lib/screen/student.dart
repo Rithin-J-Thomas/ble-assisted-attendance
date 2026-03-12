@@ -4,6 +4,9 @@ import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+
 
 class Student extends StatefulWidget {
   const Student({super.key});
@@ -58,8 +61,19 @@ class _StudentState extends State<Student> {
       deviceId = newDeviceId;
     });
 
-    debugPrint("Registered DeviceID: $deviceId");
+    // 🔹 Send registration request to Firestore
+    await FirebaseFirestore.instance
+        .collection('student')
+        .doc(roll)
+        .set({
+      'rollNo': roll,
+      'deviceId': newDeviceId,
+      'approved': false, // default false until teacher approves
+    });
+
+    debugPrint("Registered & sent to Firebase: $roll | $newDeviceId");
   }
+
 
   Future<void> _requestPermissions() async {
     await [

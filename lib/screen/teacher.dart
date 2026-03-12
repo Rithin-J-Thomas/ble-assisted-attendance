@@ -3,6 +3,8 @@ import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 
 class Teacher extends StatefulWidget {
@@ -16,11 +18,74 @@ class _TeacherState extends State<Teacher> {
   final FlutterReactiveBle _ble = FlutterReactiveBle();
   StreamSubscription<DiscoveredDevice>? _scanSub;
 
+    final Set<String> _markedStudents = {};
+    static const int rssiThreshold = -75;
+
+
   @override
   void dispose() {
     _scanSub?.cancel();
     super.dispose();
   }
+
+  Future<void> markAttendance(String rollNo, String deviceId) async {
+
+    if (_markedStudents.contains(rollNo)) {
+      debugPrint("Already marked locally: $rollNo");
+      return;
+    }
+
+    final studentDoc = await FirebaseFirestore.instance
+        .collection('student')
+        .doc(rollNo)
+        .get();
+
+    if (!studentDoc.exists) {
+      debugPrint("Student not registered");
+      return;
+    }
+
+    final data = studentDoc.data()!;
+
+    if (data['deviceId'] != deviceId) {
+      debugPrint("Device ID mismatch");
+      return;
+    }
+
+    if (data['approved'] != true) {
+      debugPrint("Student not approved");
+      return;
+    }
+
+    final today = DateTime.now().toIso8601String().split("T")[0];
+
+    final attendanceRef = FirebaseFirestore.instance
+        .collection('attendance')
+        .doc(today)
+        .collection('students')
+        .doc(rollNo);
+
+    final doc = await attendanceRef.get();
+
+    if (doc.exists) {
+      debugPrint("Attendance already exists in DB");
+      _markedStudents.add(rollNo);
+      return;
+    }
+
+    await attendanceRef.set({
+      "rollNo": rollNo,
+      "deviceId": deviceId,
+      "present": true,
+      "time": FieldValue.serverTimestamp(),
+    });
+
+    _markedStudents.add(rollNo);
+
+    debugPrint("Attendance marked for $rollNo");
+  }
+
+
 
   Future<bool> _requestPermissions() async {
     final statuses = await [
@@ -33,6 +98,9 @@ class _TeacherState extends State<Teacher> {
   }
 
   void _startScan() async {
+
+    _markedStudents.clear();
+
     final granted = await _requestPermissions();
     if (!granted) {
       debugPrint('Permissions denied, cannot scan.');
@@ -56,12 +124,25 @@ class _TeacherState extends State<Teacher> {
       if (data.length <= 2) return; // must contain ID + data
 
       try {
-        // Remove manufacturer ID (first 2 bytes)
-        final rollBytes = data.sublist(2);
+        final payloadBytes = data.sublist(2);
+        final payload = utf8.decode(payloadBytes);
 
-        final rollNo = utf8.decode(rollBytes);
+        final parts = payload.split("|");
 
-        debugPrint("Student Present: $rollNo | RSSI: ${device.rssi}");
+        if (parts.length != 2) return;
+
+        final rollNo = parts[0];
+        final deviceId = parts[1];
+
+        if (device.rssi < rssiThreshold) {
+          debugPrint("Ignored weak signal: $rollNo | RSSI ${device.rssi}");
+          return;
+        }
+
+        debugPrint("Detected Student: $rollNo | RSSI: ${device.rssi}");
+
+        markAttendance(rollNo, deviceId);
+
 
       } catch (e) {
         debugPrint("Decode failed: $e");
