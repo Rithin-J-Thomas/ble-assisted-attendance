@@ -19,14 +19,22 @@ class _TeacherState extends State<Teacher> {
   StreamSubscription<DiscoveredDevice>? _scanSub;
 
     final Set<String> _markedStudents = {};
-    static const int rssiThreshold = -75;
+    final TextEditingController _rssiController = TextEditingController(text: "-75");
 
+    bool _isScanning = false;
+
+    int rssiThreshold = -75;
+
+
+  String? _currentSession;
 
   @override
   void dispose() {
     _scanSub?.cancel();
+    _rssiController.dispose();
     super.dispose();
   }
+
 
   Future<void> markAttendance(String rollNo, String deviceId) async {
 
@@ -57,13 +65,25 @@ class _TeacherState extends State<Teacher> {
       return;
     }
 
-    final today = DateTime.now().toIso8601String().split("T")[0];
+    final now = DateTime.now();
+
+    final today =
+        "${now.day.toString().padLeft(2,'0')}-${now.month.toString().padLeft
+      (2,'0')}-${now.year}";
+
+    if (_currentSession == null) return;
+
+    final session = _currentSession!;
+
+
+
 
     final attendanceRef = FirebaseFirestore.instance
         .collection('attendance')
         .doc(today)
-        .collection('students')
+        .collection(session)
         .doc(rollNo);
+
 
     final doc = await attendanceRef.get();
 
@@ -97,15 +117,48 @@ class _TeacherState extends State<Teacher> {
     return statuses.values.every((status) => status.isGranted);
   }
 
+  void _stopScan() async {
+    await _scanSub?.cancel();
+    _scanSub = null;
+
+    setState(() {
+      _isScanning = false;
+    });
+
+    debugPrint("Scanning stopped");
+  }
+  void _updateRssi() {
+    final value = int.tryParse(_rssiController.text);
+
+    if (value != null) {
+      setState(() {
+        rssiThreshold = value;
+      });
+      debugPrint("New RSSI threshold: $rssiThreshold");
+    }
+  }
+
+
+
   void _startScan() async {
 
+
     _markedStudents.clear();
+
+    final now = DateTime.now();
+
+    _currentSession =
+    "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
+
 
     final granted = await _requestPermissions();
     if (!granted) {
       debugPrint('Permissions denied, cannot scan.');
       return;
     }
+    setState(() {
+      _isScanning = true;
+    });
 
     _scanSub?.cancel();
 
@@ -151,8 +204,6 @@ class _TeacherState extends State<Teacher> {
     }, onError: (e) {
       debugPrint('Scan error: $e');
     });
-
-
   }
 
 
@@ -160,16 +211,54 @@ class _TeacherState extends State<Teacher> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Teacher Mode')),
-      body: Center(
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
-            minimumSize: const Size(190, 90),
-          ),
-          onPressed: _startScan,
-          child: const Text("Start Scan"),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+
+            TextField(
+              controller: _rssiController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Minimum RSSI (example: -60)",
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            ElevatedButton(
+              onPressed: _updateRssi,
+              child: const Text("Set RSSI Threshold"),
+            ),
+
+            const SizedBox(height: 40),
+
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 80),
+              ),
+              onPressed: _isScanning ? null : _startScan,
+              child: const Text("Start Scan"),
+            ),
+
+            const SizedBox(height: 20),
+
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 80),
+                backgroundColor: Colors.red,
+              ),
+              onPressed: _isScanning ? _stopScan : null,
+              child: const Text("Stop Scan"),
+            ),
+
+          ],
         ),
       ),
+
+
     );
   }
 }
