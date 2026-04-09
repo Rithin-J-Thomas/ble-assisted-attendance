@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'attendance.dart';
 
 class Teacher extends StatefulWidget {
   const Teacher({super.key});
@@ -247,6 +248,23 @@ class _TeacherState extends State<Teacher> {
               onPressed: _updateRssi,
               child: const Text("Set RSSI Threshold"),
             ),
+            const SizedBox(height: 20),
+
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AttendancePage(),
+                  ),
+                );
+              },
+              child: const Text("View Attendance Records"),
+            ),
+
 
             const SizedBox(height: 40),
 
